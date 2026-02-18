@@ -1,0 +1,505 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valorant Pro Analytics - Édition Intuitive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; scroll-behavior: smooth; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); }
+        .chart-card { transition: all 0.3s ease; height: 280px; }
+        .selected-row { background: rgba(59, 130, 246, 0.05) !important; border-left: 4px solid #3b82f6; }
+        
+        .editable-cell:hover { background: rgba(255,255,255,0.05); cursor: text; }
+        .admin-active .editable-cell { outline: 1px dashed #444; border-radius: 4px; }
+        .admin-active .editable-cell:focus { outline: 2px solid #dc2626; background: #18181b; }
+        
+        select.inline-edit {
+            background: #18181b;
+            color: white;
+            border: 1px solid #3f3f46;
+            border-radius: 4px;
+            font-size: 12px;
+            padding: 2px 4px;
+            outline: none;
+        }
+
+        .comment-area {
+            background: rgba(24, 24, 27, 0.6);
+            border: 1px solid rgba(63, 63, 70, 0.4);
+            transition: all 0.2s ease;
+        }
+        .admin-active .comment-area:focus-within {
+            border-color: #dc2626;
+            background: rgba(24, 24, 27, 0.9);
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+        
+        /* Animation pour le flou */
+        #main-content {
+            transition: filter 0.5s ease;
+        }
+        .is-blurred {
+            filter: blur(8px);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen pb-20">
+
+    <div id="main-content">
+        <header class="border-b border-zinc-800 bg-zinc-950/50 sticky top-0 z-50 backdrop-blur-xl">
+            <div class="max-w-[1600px] mx-auto px-6 py-4 flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <div class="h-10 w-10 bg-red-600 rounded-lg flex items-center justify-center font-black italic shadow-[0_0_20px_rgba(220,38,38,0.3)]">V</div>
+                    <div>
+                        <h1 class="text-lg font-extrabold uppercase tracking-widest leading-none">Pro Analytics</h1>
+                        <span id="admin-status" class="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Mode Lecture</span>
+                    </div>
+                </div>
+                <div class="flex gap-4">
+                    <button id="auth-btn" class="px-5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-bold uppercase tracking-widest transition-all">Admin</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
+
+            <!-- Filtres et Recherche -->
+            <section class="flex flex-col lg:flex-row gap-6 items-end justify-between bg-zinc-900/40 p-6 rounded-2xl border border-zinc-800">
+                <div class="flex flex-wrap gap-4 items-center">
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Focus Joueur</label>
+                        <select id="player-filter" class="w-64 bg-zinc-800 border-none rounded-xl p-3 text-sm font-bold outline-none ring-1 ring-zinc-700 focus:ring-red-500">
+                            <option value="all">Tous les joueurs</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Vue Stratégique</label>
+                        <div class="flex bg-zinc-800 p-1 rounded-xl">
+                            <button onclick="setStatsView('all')" id="view-all" class="px-4 py-2 text-xs font-black rounded-lg bg-red-600 transition-colors">Global</button>
+                            <button onclick="setStatsView('off')" id="view-off" class="px-4 py-2 text-xs font-black rounded-lg transition-colors">Offensif</button>
+                            <button onclick="setStatsView('def')" id="view-def" class="px-4 py-2 text-xs font-black rounded-lg transition-colors">Défensif</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3">
+                    <div class="relative">
+                        <input type="text" id="search-player" placeholder="Rechercher un joueur..." class="bg-zinc-800 border-none rounded-xl py-3 pl-10 pr-4 text-sm font-medium outline-none ring-1 ring-zinc-700 w-48 focus:w-64 transition-all">
+                        <svg class="w-4 h-4 absolute left-3 top-3.5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+                    <button id="add-player-btn" class="hidden h-11 px-4 bg-red-600 text-white rounded-xl flex items-center justify-center text-xs font-black uppercase tracking-tighter hover:bg-red-700 transition-all">+ Nouveau</button>
+                </div>
+            </section>
+
+            <!-- Graphiques -->
+            <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-zinc-900/40 border border-zinc-800 p-6 rounded-3xl">
+                    <h3 id="chart-title-1" class="text-xs font-black uppercase text-zinc-500 mb-6">ACS</h3>
+                    <div class="chart-card"><canvas id="chart1"></canvas></div>
+                </div>
+                <div class="bg-zinc-900/40 border border-zinc-800 p-6 rounded-3xl">
+                    <h3 id="chart-title-2" class="text-xs font-black uppercase text-zinc-500 mb-6">KAST</h3>
+                    <div class="chart-card"><canvas id="chart2"></canvas></div>
+                </div>
+                <div class="bg-zinc-900/40 border border-zinc-800 p-6 rounded-3xl">
+                    <h3 id="chart-title-3" class="text-xs font-black uppercase text-zinc-500 mb-6">HS%</h3>
+                    <div class="chart-card"><canvas id="chart3"></canvas></div>
+                </div>
+            </section>
+
+            <!-- Tableau Principal -->
+            <section class="bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+                <div class="overflow-x-auto">
+                    <table id="main-table" class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-zinc-800/50 text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400">
+                                <th class="p-5 cursor-pointer hover:text-white" onclick="sortBy('name')">Joueur</th>
+                                <th class="p-5 cursor-pointer hover:text-white" onclick="sortBy('role1')">Rôle</th>
+                                <th class="p-5 cursor-pointer hover:text-white text-center bg-zinc-800/30" onclick="sortBy('acs')">ACS</th>
+                                <th class="p-5 cursor-pointer hover:text-white text-center" onclick="sortBy('kast')">KAST</th>
+                                <th class="p-5 cursor-pointer hover:text-white text-center" onclick="sortBy('dd')">DDΔ/R</th>
+                                <th class="p-5 cursor-pointer hover:text-white text-center" onclick="sortBy('fb')">FB</th>
+                                <th class="p-5 cursor-pointer hover:text-white text-center" onclick="sortBy('clutch')">Clutch %</th>
+                                <th class="p-5 cursor-pointer hover:text-white text-center" onclick="sortBy('hs')">HS %</th>
+                                <th class="p-5 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section Commentaires Coaching -->
+            <section class="space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="h-px flex-1 bg-zinc-800"></div>
+                    <h2 class="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Notes de Coaching & Suivi</h2>
+                    <div class="h-px flex-1 bg-zinc-800"></div>
+                </div>
+                <div id="comments-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal Login -->
+    <div id="login-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div class="bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-zinc-800 shadow-2xl">
+            <h3 class="text-2xl font-black mb-8 tracking-tighter">AUTHENTIFICATION</h3>
+            <div class="space-y-4">
+                <input type="text" id="username" placeholder="Utilisateur" class="w-full p-4 rounded-xl bg-zinc-800 border-none outline-none focus:ring-2 ring-red-600 font-bold">
+                <input type="password" id="password" placeholder="Mot de passe" class="w-full p-4 rounded-xl bg-zinc-800 border-none outline-none focus:ring-2 ring-red-600 font-bold">
+                <div id="login-error" class="hidden text-red-500 text-xs font-bold uppercase tracking-widest text-center">Identifiants incorrects</div>
+                <div class="flex gap-3 mt-6">
+                    <button id="cancel-login" class="flex-1 py-4 bg-zinc-800 rounded-xl font-black uppercase text-xs">Fermer</button>
+                    <button id="submit-login" class="flex-1 py-4 bg-red-600 rounded-xl font-black uppercase text-xs">Connexion</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- B64 ---
+        const _U = "Rm94eXV5dQ=="; 
+        const _P = "RUtGYXozQA==";
+
+        // --- CONSTANTES ---
+        const ROLES = ["N/A", "Duelist", "Initiator", "Controller", "Sentinel", "Flex"];
+        const AGENTS = ["N/A", "Jett", "Raze", "Neon", "Phoenix", "Reyna", "Yoru", "Sova", "Breach", "Skye", "KAY/O", "Fade", "Gekko", "Omen", "Astra", "Viper", "Brimstone", "Harbor", "Clove", "Sage", "Cypher", "Killjoy", "Chamber", "Deadlock", "Vyse"];
+
+        // --- DONNÉES ---
+        let players = JSON.parse(localStorage.getItem('valProStats')) || [
+            { id: 1, name: "Foxyuyu", role1: "Duelist", acs: 245, kast: 78.5, dd: 42, fb: 12, clutch: 15, hs: 28, agent: "Jett", comment: "Excellent entry, doit travailler sur le timing des ultimes." },
+            { id: 2, name: "Chronos", role1: "Initiator", acs: 210, kast: 82.1, dd: 15, fb: 4, clutch: 22, hs: 24, agent: "Sova", comment: "Très bon teamplay. Lineups à perfectionner sur Abyss." },
+            { id: 3, name: "Viperine", role1: "Controller", acs: 185, kast: 75.2, dd: -5, fb: 2, clutch: 31, hs: 21, agent: "Omen", comment: "Le cerveau de l'équipe. Doit être plus agressif en fin de round." },
+            { id: 4, name: "Shadow", role1: "Sentinel", acs: 198, kast: 79.8, dd: 8, fb: 3, clutch: 25, hs: 26, agent: "Cypher", comment: "Anchor solide. Attention au repositionnement après contact." }
+        ];
+
+        let currentSort = { field: 'acs', dir: 'desc' };
+        let selectedPlayerId = 'all';
+        let statsView = 'all'; 
+        let isAdmin = false;
+        let chartInstances = {};
+
+        // --- INITIALISATION ---
+        window.onload = () => {
+            initCharts();
+            populatePlayerFilter();
+            renderAll();
+            setupAuth();
+            setupSearch();
+        };
+
+        function renderAll() {
+            renderTable();
+            renderComments();
+        }
+
+        function populatePlayerFilter() {
+            const select = document.getElementById('player-filter');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="all">Tous les joueurs</option>';
+            players.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                select.appendChild(opt);
+            });
+            select.value = currentVal;
+
+            select.onchange = (e) => {
+                selectedPlayerId = e.target.value === 'all' ? 'all' : parseInt(e.target.value);
+                renderAll();
+                updateCharts();
+            };
+        }
+
+        function setStatsView(view) {
+            statsView = view;
+            ['all', 'off', 'def'].forEach(v => {
+                const btn = document.getElementById(`view-${v}`);
+                btn.classList.toggle('bg-red-600', v === view);
+            });
+            updateCharts();
+        }
+
+        function updatePlayerField(id, field, value) {
+            const player = players.find(p => p.id === id);
+            if (player) {
+                if (['acs', 'kast', 'dd', 'fb', 'clutch', 'hs'].includes(field)) {
+                    let cleanValue = value.toString().replace(/[^\d.-]/g, '');
+                    player[field] = parseFloat(cleanValue) || 0;
+                } else {
+                    player[field] = value;
+                }
+                
+                localStorage.setItem('valProStats', JSON.stringify(players));
+                updateCharts();
+                if(field === 'name') {
+                    populatePlayerFilter();
+                    renderComments();
+                }
+            }
+        }
+
+        function renderTable() {
+            const body = document.getElementById('stats-body');
+            const tableEl = document.getElementById('main-table');
+            body.innerHTML = '';
+            
+            tableEl.classList.toggle('admin-active', isAdmin);
+            let filtered = selectedPlayerId === 'all' ? players : players.filter(p => p.id === selectedPlayerId);
+            let sorted = [...filtered].sort((a, b) => {
+                let vA = a[currentSort.field];
+                let vB = b[currentSort.field];
+                return currentSort.dir === 'asc' ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+            });
+
+            sorted.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.className = `border-b border-zinc-800/50 hover:bg-zinc-800/10 transition-colors ${p.id === selectedPlayerId ? 'selected-row' : ''}`;
+                
+                const tdJoueur = document.createElement('td');
+                tdJoueur.className = "p-5";
+                tdJoueur.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="h-8 w-8 bg-zinc-800 rounded flex items-center justify-center text-[10px] font-bold">${p.name[0] || '?'}</div>
+                        <div>
+                            <p class="font-bold text-sm ${isAdmin ? 'editable-cell' : ''}" 
+                               contenteditable="${isAdmin}" 
+                               onblur="updatePlayerField(${p.id}, 'name', this.innerText)">${p.name}</p>
+                            <div class="flex items-center gap-1">
+                                <span class="text-[9px] text-zinc-500 font-bold uppercase">Agent:</span>
+                                ${isAdmin ? createSelect(p.id, 'agent', AGENTS, p.agent) : `<span class="text-[9px] text-zinc-400 font-bold uppercase">${p.agent}</span>`}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const tdRole = document.createElement('td');
+                tdRole.className = "p-5";
+                tdRole.innerHTML = isAdmin ? createSelect(p.id, 'role1', ROLES, p.role1) : `<span class="px-2 py-1 bg-zinc-800 rounded text-[9px] font-black uppercase text-zinc-400 border border-zinc-700">${p.role1}</span>`;
+
+                const createStatCell = (field, suffix = '', extraClass = '') => {
+                    const td = document.createElement('td');
+                    td.className = `p-5 text-center font-bold text-sm ${extraClass}`;
+                    if(isAdmin) {
+                        td.className += " editable-cell";
+                        td.contentEditable = true;
+                        td.onblur = (e) => {
+                            updatePlayerField(p.id, field, e.target.innerText);
+                            e.target.innerText = parseFloat(p[field]) + suffix;
+                        };
+                    }
+                    td.innerText = `${p[field]}${suffix}`;
+                    return td;
+                };
+
+                tr.appendChild(tdJoueur);
+                tr.appendChild(tdRole);
+                tr.appendChild(createStatCell('acs', '', 'bg-zinc-800/10 font-black'));
+                tr.appendChild(createStatCell('kast', '%', 'text-zinc-400'));
+                tr.appendChild(createStatCell('dd', '', p.dd >= 0 ? 'text-green-500' : 'text-red-500'));
+                tr.appendChild(createStatCell('fb', '', 'text-zinc-400'));
+                tr.appendChild(createStatCell('clutch', '%', 'text-zinc-400'));
+                tr.appendChild(createStatCell('hs', '%', 'text-red-500'));
+
+                const tdActions = document.createElement('td');
+                tdActions.className = "p-5 text-right";
+                if(isAdmin) {
+                    tdActions.innerHTML = `<button onclick="deletePlayer(${p.id})" class="text-zinc-600 hover:text-red-500 transition-colors">🗑️</button>`;
+                }
+                tr.appendChild(tdActions);
+                body.appendChild(tr);
+            });
+        }
+
+        function renderComments() {
+            const container = document.getElementById('comments-container');
+            container.innerHTML = '';
+            let filtered = selectedPlayerId === 'all' ? players : players.filter(p => p.id === selectedPlayerId);
+            
+            filtered.forEach(p => {
+                const card = document.createElement('div');
+                card.className = "comment-area p-5 rounded-2xl flex flex-col gap-2";
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] font-black uppercase tracking-tighter text-red-500">Coach Comment : ${p.name}</span>
+                        <span class="text-[8px] font-bold text-zinc-600 uppercase italic">ID#${p.id}</span>
+                    </div>
+                    <div class="text-sm font-medium leading-relaxed text-zinc-300 min-h-[60px] ${isAdmin ? 'cursor-text outline-none' : ''}" 
+                         contenteditable="${isAdmin}" 
+                         onblur="updatePlayerField(${p.id}, 'comment', this.innerText)"
+                         placeholder="Ajouter une observation...">
+                        ${p.comment || "Aucune note pour le moment."}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function createSelect(playerId, field, options, currentVal) {
+            let html = `<select class="inline-edit" onchange="updatePlayerField(${playerId}, '${field}', this.value)">`;
+            options.forEach(opt => {
+                html += `<option value="${opt}" ${opt === currentVal ? 'selected' : ''}>${opt}</option>`;
+            });
+            html += `</select>`;
+            return html;
+        }
+
+        function sortBy(field) {
+            if (currentSort.field === field) {
+                currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.dir = 'desc';
+            }
+            renderTable();
+        }
+
+        function deletePlayer(id) {
+            if(confirm("Supprimer ce joueur et ses commentaires ?")) {
+                players = players.filter(p => p.id !== id);
+                localStorage.setItem('valProStats', JSON.stringify(players));
+                populatePlayerFilter();
+                renderAll();
+                updateCharts();
+            }
+        }
+
+        function initCharts() {
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400 },
+                scales: {
+                    y: { grid: { color: '#222' }, ticks: { color: '#666', font: { size: 10 } } },
+                    x: { grid: { display: false }, ticks: { color: '#666', font: { size: 10 } } }
+                },
+                plugins: { legend: { display: false } }
+            };
+
+            chartInstances.c1 = new Chart(document.getElementById('chart1'), { type: 'bar', data: { labels: [], datasets: [{ backgroundColor: '#dc2626', borderRadius: 6 }] }, options: commonOptions });
+            chartInstances.c2 = new Chart(document.getElementById('chart2'), { type: 'line', data: { labels: [], datasets: [{ borderColor: '#3b82f6', tension: 0.4, fill: true, backgroundColor: 'rgba(59, 130, 246, 0.1)' }] }, options: commonOptions });
+            chartInstances.c3 = new Chart(document.getElementById('chart3'), { type: 'bar', data: { labels: [], datasets: [{ backgroundColor: '#10b981', borderRadius: 6 }] }, options: commonOptions });
+            updateCharts();
+        }
+
+        function updateCharts() {
+            let dataPlayers = selectedPlayerId === 'all' ? players : players.filter(p => p.id === selectedPlayerId);
+            const labels = dataPlayers.map(p => p.name);
+            let m1, m2, m3, t1, t2, t3;
+            if (statsView === 'off') {
+                t1 = "ACS"; m1 = dataPlayers.map(p => p.acs);
+                t2 = "FB"; m2 = dataPlayers.map(p => p.fb);
+                t3 = "HS%"; m3 = dataPlayers.map(p => p.hs);
+            } else if (statsView === 'def') {
+                t1 = "DDΔ/R"; m1 = dataPlayers.map(p => p.dd);
+                t2 = "KAST"; m2 = dataPlayers.map(p => p.kast);
+                t3 = "Clutch%"; m3 = dataPlayers.map(p => p.clutch);
+            } else {
+                t1 = "ACS (Combat)"; m1 = dataPlayers.map(p => p.acs);
+                t2 = "KAST (Impact)"; m2 = dataPlayers.map(p => p.kast);
+                t3 = "HS % (Précision)"; m3 = dataPlayers.map(p => p.hs);
+            }
+            document.getElementById('chart-title-1').innerText = t1;
+            document.getElementById('chart-title-2').innerText = t2;
+            document.getElementById('chart-title-3').innerText = t3;
+            chartInstances.c1.data.labels = labels;
+            chartInstances.c1.data.datasets[0].data = m1;
+            chartInstances.c2.data.labels = labels;
+            chartInstances.c2.data.datasets[0].data = m2;
+            chartInstances.c3.data.labels = labels;
+            chartInstances.c3.data.datasets[0].data = m3;
+            chartInstances.c1.update('none');
+            chartInstances.c2.update('none');
+            chartInstances.c3.update('none');
+        }
+
+        function setupAuth() {
+            const btn = document.getElementById('auth-btn');
+            const mainContent = document.getElementById('main-content');
+            
+            btn.onclick = () => {
+                if(isAdmin) { 
+                    isAdmin = false; 
+                    btn.innerText = "Admin"; 
+                    document.getElementById('admin-status').innerText = "Mode Lecture";
+                    document.getElementById('admin-status').className = "text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]";
+                    document.getElementById('add-player-btn').classList.add('hidden'); 
+                    document.body.classList.remove('admin-active');
+                    renderAll(); 
+                }
+                else {
+                    document.getElementById('login-modal').classList.remove('hidden');
+                    mainContent.classList.add('is-blurred');
+                }
+            };
+
+            document.getElementById('submit-login').onclick = () => {
+                const uInput = btoa(document.getElementById('username').value);
+                const pInput = btoa(document.getElementById('password').value);
+
+                if(uInput === _U && pInput === _P) {
+                    isAdmin = true;
+                    document.getElementById('login-modal').classList.add('hidden');
+                    mainContent.classList.remove('is-blurred');
+                    btn.innerText = "Quitter Admin";
+                    document.getElementById('admin-status').innerText = "Mode Édition";
+                    document.getElementById('admin-status').className = "text-[10px] text-red-500 font-bold uppercase tracking-[0.2em]";
+                    document.getElementById('add-player-btn').classList.remove('hidden');
+                    document.body.classList.add('admin-active');
+                    document.getElementById('login-error').classList.add('hidden');
+                    renderAll();
+                } else {
+                    document.getElementById('login-error').classList.remove('hidden');
+                }
+            };
+
+            document.getElementById('cancel-login').onclick = () => {
+                document.getElementById('login-modal').classList.add('hidden');
+                mainContent.classList.remove('is-blurred');
+                document.getElementById('login-error').classList.add('hidden');
+            };
+        }
+
+        function setupSearch() {
+            document.getElementById('search-player').oninput = (e) => {
+                const val = e.target.value.toLowerCase();
+                const rows = document.querySelectorAll('#stats-body tr');
+                rows.forEach(row => {
+                    const name = row.querySelector('td p').innerText.toLowerCase();
+                    row.style.display = name.includes(val) ? '' : 'none';
+                });
+            };
+        }
+
+        document.getElementById('add-player-btn').onclick = () => {
+            players.push({ 
+                id: Date.now(), 
+                name: "Nouveau Joueur", 
+                role1: "N/A", 
+                acs: 0, 
+                kast: 0, 
+                dd: 0, 
+                fb: 0, 
+                clutch: 0, 
+                hs: 0, 
+                agent: "N/A",
+                comment: "Nouveau joueur ajouté. En attente d'évaluation."
+            });
+            localStorage.setItem('valProStats', JSON.stringify(players));
+            populatePlayerFilter();
+            renderAll();
+            updateCharts();
+        };
+    </script>
+</body>
+</html>
